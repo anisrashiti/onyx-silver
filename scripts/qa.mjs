@@ -74,7 +74,7 @@ try {
     assert.equal(statement.headingLines, 1, JSON.stringify(statement));
     assert.ok(statement.textWidth <= statement.headingWidth, JSON.stringify(statement));
     assert.ok(statement.headingSize >= 30 && statement.headingSize <= 36);
-    assert.equal(statement.background, "rgb(222, 215, 204)");
+    assert.equal(statement.background, "rgb(201, 217, 232)");
     assert.ok(statement.textColors.every((color) => color === "rgb(36, 36, 36)"));
     assert.doesNotMatch(await page.locator("body").innerText(), /THE ONYX EDIT/);
     await page.locator(".hero-information").getByRole("button", { name: "SHOP NOW", exact: true }).waitFor();
@@ -220,7 +220,7 @@ try {
     }
   });
 
-  for (const width of [1001, 1024, 768, 390, 320, 1920]) {
+  for (const width of [1001, 1024, 701, 768, 1000, 320, 375, 390, 430, 1920]) {
     await check(`${width}px responsive layout and no overflow`, async () => {
       await page.setViewportSize({ width, height: 900 });
       await page.goto(url, { waitUntil: "networkidle" });
