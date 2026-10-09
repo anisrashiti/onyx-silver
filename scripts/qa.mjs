@@ -2,7 +2,7 @@ import { chromium } from "@playwright/test";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 
-const url = process.env.QA_BASE_URL || "http://localhost:3000";
+const url = process.env.QA_BASE_URL || "http://127.0.0.1:3000";
 mkdirSync("outputs", { recursive: true });
 const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const edge = "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
@@ -31,6 +31,24 @@ async function loadPageImages() {
   });
 }
 
+async function statementMetrics() {
+  return page.evaluate(() => {
+    const section = document.querySelector(".brand-statement");
+    const heading = section.querySelector("h2");
+    const range = document.createRange();
+    range.selectNodeContents(heading);
+    return {
+      width: innerWidth,
+      headingLines: range.getClientRects().length,
+      headingWidth: heading.clientWidth,
+      textWidth: range.getBoundingClientRect().width,
+      headingSize: parseFloat(getComputedStyle(heading).fontSize),
+      background: getComputedStyle(section).backgroundColor,
+      textColors: [heading, section.querySelector("p"), section.querySelector(".text-link")].map((element) => getComputedStyle(element).color),
+    };
+  });
+}
+
 try {
   const response = await page.goto(url, { waitUntil: "networkidle" });
   assert.equal(response.status(), 200);
@@ -38,12 +56,29 @@ try {
   await loadPageImages();
 
   await check("1440px visual layout, font loading, and no overflow", async () => {
-    const layout = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth, font: getComputedStyle(document.body).fontFamily, loaded: [...document.fonts].filter((font) => font.status === "loaded").map((font) => font.family), hero: [...document.querySelectorAll(".hero-panels > div")].map((element) => element.getBoundingClientRect().width), products: [...document.querySelectorAll(".product-track > article")].slice(0, 5).map((element) => element.getBoundingClientRect().right) }));
+    const layout = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth, font: getComputedStyle(document.body).fontFamily, loaded: [...document.fonts].filter((font) => font.status === "loaded").map((font) => font.family), editorial: [...document.querySelectorAll(".brand-statement h2, .merchandising-copy h2, .section-heading-row h2, .experience-heading h2, .onyx-world h2")].map((element) => getComputedStyle(element).fontFamily), hero: [...document.querySelectorAll(".hero-panels > div")].map((element) => element.getBoundingClientRect().width), products: [...document.querySelectorAll(".product-track > article")].slice(0, 5).map((element) => element.getBoundingClientRect().right), whyHeight: document.querySelector(".brand-statement").getBoundingClientRect().height, whyWidth: document.querySelector(".brand-statement-inner").getBoundingClientRect().width, whyGap: parseFloat(getComputedStyle(document.querySelector(".brand-statement-inner")).columnGap), wordmark: (() => { const image = document.querySelector(".hero-wordmark"); return image.clientWidth / image.clientHeight; })() }));
     assert.ok(layout.scroll <= layout.width, JSON.stringify(layout));
-    assert.ok(layout.font.includes("DM Sans") || layout.font.includes("DM_Sans"), JSON.stringify(layout));
-    assert.ok(layout.loaded.some((font) => font.includes("DM Sans") || font.includes("DM_Sans")), JSON.stringify(layout));
+    assert.match(layout.font, /satoshi/i, JSON.stringify(layout));
+    assert.ok(layout.loaded.some((font) => /satoshi/i.test(font)), JSON.stringify(layout));
+    assert.ok(layout.loaded.some((font) => /kalnia/i.test(font)), JSON.stringify(layout));
+    assert.ok(layout.editorial.every((font) => /kalnia/i.test(font)), JSON.stringify(layout));
+    assert.ok(![layout.font, ...layout.loaded, ...layout.editorial].some((font) => /dm.?sans/i.test(font)));
+    assert.ok(layout.whyHeight >= 260 && layout.whyHeight <= 320, JSON.stringify(layout));
+    assert.ok(layout.whyWidth <= 1100 && layout.whyGap >= 80, JSON.stringify(layout));
+    assert.ok(Math.abs(layout.wordmark - 908 / 283) < .025, JSON.stringify(layout));
+    await page.getByRole("heading", { level: 1, name: "Onyx Silver — refined silver jewelry" }).waitFor({ state: "attached" });
+    writeFileSync("outputs/v2-typography.json", JSON.stringify(layout, null, 2));
     assert.ok(Math.abs(layout.hero[0] - layout.hero[1]) < 1);
     assert.ok(layout.products[4] < 1441);
+    const statement = await statementMetrics();
+    assert.equal(statement.headingLines, 1, JSON.stringify(statement));
+    assert.ok(statement.textWidth <= statement.headingWidth, JSON.stringify(statement));
+    assert.ok(statement.headingSize >= 30 && statement.headingSize <= 36);
+    assert.equal(statement.background, "rgb(222, 215, 204)");
+    assert.ok(statement.textColors.every((color) => color === "rgb(36, 36, 36)"));
+    assert.doesNotMatch(await page.locator("body").innerText(), /THE ONYX EDIT/);
+    await page.locator(".hero-information").getByRole("button", { name: "SHOP NOW", exact: true }).waitFor();
+    writeFileSync("outputs/homepage-statement-1440.json", JSON.stringify(statement, null, 2));
     await page.screenshot({ path: "outputs/desktop-1440.png", fullPage: true });
     await page.screenshot({ path: "outputs/desktop-hero.png" });
   });
@@ -51,9 +86,9 @@ try {
   await check("Search, no results, clear search, and focus restoration", async () => {
     const trigger = page.getByRole("button", { name: "Search jewelry", exact: true });
     await trigger.click();
-    await page.getByLabel("Search demo products").fill("charm");
+    await page.getByRole("searchbox", { name: "Search jewelry", exact: true }).fill("charm");
     assert.equal(await page.locator("dialog .product-card").count(), 3);
-    await page.getByLabel("Search demo products").fill("no-such-piece");
+    await page.getByRole("searchbox", { name: "Search jewelry", exact: true }).fill("no-such-piece");
     await page.getByRole("heading", { name: "No pieces found." }).waitFor();
     await page.getByRole("button", { name: "Clear search", exact: true }).click();
     assert.equal(await page.locator("dialog .product-card").count(), 8);
@@ -81,19 +116,28 @@ try {
     await page.getByRole("button", { name: "Choose options for Charm Bracelet", exact: true }).click();
     assert.equal(await page.getByRole("button", { name: "SELECT A LENGTH" }).isDisabled(), true);
     await page.getByRole("radio", { name: "19 cm", exact: true }).check();
-    await page.getByRole("button", { name: "ADD TO DEMO BAG", exact: true }).click();
+    await page.getByRole("button", { name: "ADD TO BAG", exact: true }).click();
     assert.equal(await page.getByTestId("bag-total").textContent(), "€129");
     await page.getByRole("button", { name: "Increase quantity of Charm Bracelet 19 cm", exact: true }).click();
     assert.equal(await page.getByTestId("bag-total").textContent(), "€258");
     await closePanel();
     await page.getByRole("button", { name: "Choose options for Charm Bracelet", exact: true }).click();
     await page.getByRole("radio", { name: "17 cm", exact: true }).check();
-    await page.getByRole("button", { name: "ADD TO DEMO BAG", exact: true }).click();
+    await page.getByRole("button", { name: "ADD TO BAG", exact: true }).click();
     assert.equal(await page.locator("dialog .cart-line").count(), 2);
     assert.equal(await page.getByTestId("bag-total").textContent(), "€387");
     await closePanel();
-    await page.getByRole("button", { name: "Add Bow Crystal Drops to demo bag", exact: true }).click();
+    await page.getByRole("button", { name: "Add Bow Crystal Drops to bag", exact: true }).click();
     assert.equal(await page.getByTestId("bag-total").textContent(), "€472");
+    assert.equal(await page.getByTestId("checkout-status").count(), 0);
+    const outgoing = [];
+    const observe = (request) => { if (request.method() !== "GET") outgoing.push(request.url()); };
+    page.on("request", observe);
+    await page.getByRole("button", { name: "CONTINUE TO CHECKOUT", exact: true }).click();
+    assert.match(await page.getByTestId("checkout-status").textContent(), /currently unavailable/);
+    await page.waitForTimeout(200);
+    page.off("request", observe);
+    assert.deepEqual(outgoing, []);
     await page.screenshot({ path: "outputs/desktop-bag.png" });
     await page.reload({ waitUntil: "networkidle" });
     await page.getByRole("button", { name: "Open shopping bag, 4 items", exact: true }).click();
@@ -130,30 +174,53 @@ try {
     await page.waitForFunction(() => !document.querySelector('[aria-label="Next products"]').disabled);
   });
 
-  await check("Empty categories, pending policies, and transparent language state", async () => {
+  await check("Empty categories, unavailable policies, and language state", async () => {
     await page.locator(".desktop-navigation").getByRole("button", { name: "Rings", exact: true }).click();
     await page.getByRole("heading", { name: "This collection is on its way." }).waitFor();
     await closePanel();
     await page.getByRole("button", { name: "Privacy Policy", exact: true }).click();
-    assert.ok((await page.locator("dialog").textContent()).includes("supplied before launch"));
+    assert.ok((await page.locator("dialog").textContent()).includes("currently unavailable"));
     await closePanel();
     await page.locator(".locale-button").click();
     assert.ok((await page.locator("dialog").textContent()).includes("Coming soon"));
     await closePanel();
   });
 
-  await check("Newsletter invalid email and explicit local-only success", async () => {
+  await check("Newsletter validation and honest unavailable state without submission", async () => {
     const input = page.getByLabel("Email address", { exact: true });
+    assert.equal(await page.locator("#newsletter-status").textContent(), "");
     await input.fill("invalid");
     await page.getByRole("button", { name: "SUBSCRIBE", exact: true }).click();
     assert.equal(await input.evaluate((element) => element.validity.valid), false);
-    await input.fill("prototype@example.com");
+    await input.fill("customer@example.com");
+    const outgoing = [];
+    const observe = (request) => { if (request.method() !== "GET") outgoing.push(request.url()); };
+    page.on("request", observe);
     await page.getByRole("button", { name: "SUBSCRIBE", exact: true }).click();
-    assert.ok((await page.locator("#newsletter-status").textContent()).includes("does not subscribe, store, or send"));
-    assert.equal(await input.inputValue(), "");
+    assert.match(await page.locator("#newsletter-status").textContent(), /currently unavailable/);
+    assert.equal(await input.inputValue(), "customer@example.com");
+    await page.waitForTimeout(200);
+    page.off("request", observe);
+    assert.deepEqual(outgoing, []);
   });
 
-  for (const width of [768, 390, 320, 1920]) {
+  await check("S&A treatment, official destination, and presentation cleanup", async () => {
+    await page.getByRole("heading", { name: "S&A JEWELLERY DESIGN", exact: true }).waitFor();
+    assert.doesNotMatch(await page.locator("body").innerText(), /prototype|demo|sample prices?|design reference|store photo pending|future integration|exclusive brand/i);
+    await page.locator(".partner-copy").getByRole("button", { name: "EXPLORE THE COLLECTION", exact: true }).click();
+    const partner = page.locator("dialog").getByRole("link", { name: /VIEW S&A COLLECTIONS/ });
+    assert.equal(await partner.getAttribute("href"), "https://s-a.pl/en/collections/");
+    assert.doesNotMatch(await page.locator("dialog").innerText(), /prototype|demo|exclusive distribution/i);
+    await closePanel();
+    const links = page.locator(".footer-link-group button");
+    for (let index = 0; index < await links.count(); index++) {
+      await links.nth(index).click();
+      assert.doesNotMatch(await page.locator("dialog").innerText(), /prototype|demo|sample prices?|design reference|future integration/i);
+      await closePanel();
+    }
+  });
+
+  for (const width of [1001, 1024, 768, 390, 320, 1920]) {
     await check(`${width}px responsive layout and no overflow`, async () => {
       await page.setViewportSize({ width, height: 900 });
       await page.goto(url, { waitUntil: "networkidle" });
@@ -161,6 +228,11 @@ try {
       await loadPageImages();
       const metrics = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth }));
       assert.ok(metrics.scroll <= metrics.width, JSON.stringify(metrics));
+      if (width > 1000) {
+        const statement = await statementMetrics();
+        assert.equal(statement.headingLines, 1, JSON.stringify(statement));
+        assert.ok(statement.textWidth <= statement.headingWidth, JSON.stringify(statement));
+      }
       if ([768, 390, 1920].includes(width)) await page.screenshot({ path: `outputs/layout-${width}.png`, fullPage: true });
     });
   }
@@ -194,7 +266,7 @@ try {
   await check("Reduced motion disables animated transitions", async () => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto(url, { waitUntil: "networkidle" });
-    const animation = await page.locator(".hero-model img").evaluate((element) => getComputedStyle(element).transitionDuration);
+    const animation = await page.locator(".hero-model-photo").evaluate((element) => getComputedStyle(element).transitionDuration);
     assert.equal(animation, "0s");
     await page.getByRole("button", { name: "Open shopping bag, 0 items", exact: true }).click();
     assert.equal(await page.locator("dialog").evaluate((element) => getComputedStyle(element).animationName), "none");

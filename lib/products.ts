@@ -1,4 +1,5 @@
 // Provisional demo inventory. Replace this module with a Shopify data adapter later.
+export const inventoryStatus = { confirmed: false, source: "local mock catalog", purchasingEnabled: false } as const;
 export type Category = "All Jewelry" | "Rings" | "Earrings" | "Necklaces" | "Bracelets" | "Sets" | "Gifts" | "Charms";
 export type Product = {
   id: string;

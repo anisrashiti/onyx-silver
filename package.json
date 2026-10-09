@@ -3,7 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "fonts": "node scripts/prepare-fonts.mjs",
+    "predev": "npm run fonts",
     "dev": "next dev --webpack",
+    "prebuild": "npm run fonts",
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint .",

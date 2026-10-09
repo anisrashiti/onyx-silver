@@ -34,7 +34,7 @@ export function ProductCarousel() {
   }
 
   return <section className="product-section" id="picked" aria-labelledby="picked-heading">
-    <div className="section-heading-row"><h2 id="picked-heading">PICKED JUST FOR YOU</h2><p className="prototype-label">DEMO SELECTION · SAMPLE PRICES</p></div>
+    <div className="section-heading-row"><h2 id="picked-heading">PICKED JUST FOR YOU.</h2></div>
     <div ref={track} className="product-track" role="region" aria-label="Curated jewelry carousel. Use left and right arrow keys to browse." tabIndex={0} onKeyDown={(event) => { if ((event.key === "ArrowLeft" || event.key === "ArrowRight") && event.target === event.currentTarget) { event.preventDefault(); move(event.key === "ArrowRight" ? 1 : -1); } }}>{products.map((product) => <ProductCard product={product} key={product.id} />)}</div>
     <div className="carousel-controls"><button className="icon-button" aria-label="Previous products" disabled={position.progress <= 0.001} onClick={() => move(-1)}><ChevronLeft size={18} /></button><div className="carousel-progress" aria-hidden="true"><span style={{ left: `${position.progress * 85}%` }} /></div><button className="icon-button" aria-label="Next products" disabled={position.end} onClick={() => move(1)}><ChevronRight size={18} /></button></div>
     <span className="sr-only" aria-live="polite">{announcement}</span>

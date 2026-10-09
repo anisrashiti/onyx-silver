@@ -7,3 +7,5 @@ out/
 !.env.example
 outputs/
 next-env.d.ts
+# Satoshi is downloaded from Fontshare for each checkout; do not redistribute it.
+public/fonts/Satoshi-Variable.woff2
